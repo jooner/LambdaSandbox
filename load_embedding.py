@@ -34,8 +34,6 @@ import argparse
 from tqdm import tqdm
 import numpy as np
 
-LARGE_NUM = 1e10
-
 
 def parse_args():
   parser = argparse.ArgumentParser()
@@ -60,20 +58,25 @@ def main():
   args = parse_args()
   word2vec_dict, vec2word_dict = get_encoders(args.glove_dir, args.glove_corpus, args.glove_vec_size)
   listified_text = works_by_author(args.train_dir, "tolstoy")
-  tokenized_text, common_dict = tokenize_text(listified_text, word2vec_dict, args.glove_vec_size)
+  # tokenized: indexed for one-hot, embedded: n-dimensional embedding
+  # common_dict: (word, index) dict for most common words
+  tokenized_text, embedded_text, common_dict = tokenize_text(listified_text, word2vec_dict, args.glove_vec_size)
+  reverse_common = dict((index, word) for word, index in common_dict.iteritems())
   tokenized_text = one_hot_embed(tokenized_text)
 
   def train():
-    # tokenized by index for one hot vectors
-    X_train, y_train = splice_up_text(tokenized_text, args.glove_vec_size)
-    train_lstm(X_train, y_train, MOST_COMMON_SIZE, args.model_file, args.weight_file)
+    # tokenized is in format [[1,0,0,...,0], .., [0,0,1,0,...,0], ...]
+    # embedded is in format [[1.134e04, 0.344e05, ...], [...], ...]
+    # make sure these two are of the same lengths
+    X_train_em, y_train_hot = splice_up_text(tokenized_text, embedded_text)
+    train_lstm(X_train_em, y_train_hot, args.glove_vec_size, args.model_file, args.weight_file)
 
   def test():
     test_text = load_test_file(args.input_file)
-    tokenized_text, _ = tokenize_text(test_text, word2vec_dict, args.glove_vec_size)
-    tokenized_text = one_hot_embed(tokenized_text)
-    reverse_common = dict((index, word) for word, index in common_dict.iteritems())
-    y_hat, true_y = test_lstm(tokenized_text, args.model_file, args.weight_file)
+    tok_txt, emb_txt, _ = tokenize_text(test_text, word2vec_dict, args.glove_vec_size)
+    raise ValueError(tok_txt[:2], emb_txt[:2])
+    tok_txt = one_hot_embed(tok_txt)
+    y_hat, true_y = test_lstm(tok_txt, emb_txt, args.model_file, args.weight_file)
     word_pred, num_tokens = [], len(y_hat)
     for i, idx in enumerate(tqdm(y_hat)):
       print("Translating predicted token {0}/{1} to word...".format(i+1, num_tokens))
@@ -82,7 +85,7 @@ def main():
       #word_pred.append(nearest_word(vec2word_dict, token))
       print(test_text[i:i+25], word_pred[i])
 
-  train()
+  #train()
   test()
 
 if __name__ == "__main__":

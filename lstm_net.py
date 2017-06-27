@@ -18,7 +18,7 @@ from utils import write_to_output, tokenize_text, nearest_word
 
 INPUT_SIZE = 25 # sequence/word length
 SLIDE = 25 # SLIDE=1: Mary had a (little) & had a little (lamb)
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.01
 GAMMA = 1e-6
 NUM_VECTORIZED_WORDS = 22000
 
@@ -39,28 +39,27 @@ def load_test_file(test_file):
       listitified_text.extend(line)
   return listitified_text
 
-def splice_up_text(tokenized_txt, vec_dimensions):
+def splice_up_text(tokenized_txt, embedded_txt):
   X_train = []
   y_train = []
   last_idx = len(tokenized_txt) - INPUT_SIZE
   print("Splitting Data...")
   for i in tqdm(xrange(0, last_idx, SLIDE)):
-    X = tokenized_txt[i:i+INPUT_SIZE]
+    X = embedded_txt[i:i+INPUT_SIZE]
     y = tokenized_txt[i+INPUT_SIZE]
     X_train.append(X)
     y_train.append(y)
   X_train, y_train = np.asarray(X_train), np.asarray(y_train)
   # adjust dimensions
-  print("Adjusting Training Data Dimensions...")
   # X_train = np.reshape(X_train, (len(X_train), INPUT_SIZE, NUM_VECTORIZED_WORDS))
-  # cache as doubly nested numpy array
+  # X_train is in glove-embedding form vs. y_train is one-hot embedded
   return X_train, y_train
 
 def train_lstm(X_train, y_train, vec_dimensions, model_dest, weight_dest):
   print("Building LSTM Model... \n")
   # initializer for bias
   initializer = RandomNormal(mean=0.0, stddev=0.05, seed=None)
-  # construct an LSTM model
+  # construct an LSTM modelx
   model = Sequential()
   model.add(LSTM(256, input_shape=(INPUT_SIZE, vec_dimensions),
                       bias_initializer=initializer,
@@ -89,18 +88,17 @@ def train_lstm(X_train, y_train, vec_dimensions, model_dest, weight_dest):
     model.save_weights(weight_dest)
     print("Successfully saved model to drive! \n")
 
-def test_lstm(tokenized_txt, model_file, weight_file):
+def test_lstm(tokenized_txt, embedded_txt, model_file, weight_file):
   X_test, y_test, y_hat, y = [], [], [], []
   model = load_model(model_file, weight_file)
   last_idx = len(tokenized_txt) - INPUT_SIZE
   for i in xrange(0, last_idx, 1):
-    X_test.append(tokenized_txt[i:i+INPUT_SIZE])
+    X_test.append(embedded_txt[i:i+INPUT_SIZE])
     y_test.append(tokenized_txt[i+INPUT_SIZE])
   X_test, y_test = np.asarray(X_test), np.asarray(y_test)
   print("Prediction in progress...")
-  predicted_tokens = model.predict(X_test, batch_size=256, verbose=1)
-  for t in predicted_tokens:
+  predicted_tokens = model.predict(X_test, batch_size=256, verbose=0)
+  for (t, _y) in zip(predicted_tokens, y_test):
     y_hat.append(np.argmax(t))
-  for _y in y_test:
-    y.append(np.argmax(_y))
+    y.append(np.argmax(_y))  
   return y_hat, y

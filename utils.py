@@ -16,6 +16,7 @@ import operator
 NU = 0.005
 EMBEDDING_SIZE = 100
 MOST_COMMON_SIZE = 22000
+LARGE_NUM = 1e10
 
 def get_words(file_path):
   wordbank = {}
@@ -121,12 +122,14 @@ def filter_most_common(word_dict):
   filtered_dict = dict(sorted(word_dict.iteritems(), key=operator.itemgetter(1), reverse=True)[:filter_size])
   for idx, word in enumerate(filtered_dict):
     common_dict[word] = idx
+  common_dict["<UNK>"] = MOST_COMMON_SIZE
   return common_dict # size of MOST_COMMON_SIZE - 1 (leave one index for unknown tokens)
 
 def tokenize_text(listified_txt, word2vec_dict, vec_size):
   occurences = {}
   existing = 0
   tokenized_text = []
+  embedded_text = []
   total = len(listified_txt)
   #word_ahead = [0] * vec_size
   for word in tqdm(listified_txt, total=total):
@@ -142,16 +145,23 @@ def tokenize_text(listified_txt, word2vec_dict, vec_size):
   common_dict = filter_most_common(occurences)
   for word in tqdm(listified_txt, total=total):
     try:
-      tokenized_text.append(common_dict[word])
+      # ensure both have to exist for encoding to happen
+      cw, vw = common_dict[word], word2vec_dict[word]
+      tokenized_text.append(cw)
+      embedded_text.append(vw)
       existing += 1
+    # if the word either does not have a glove embedding
+    # or is not a common word then yield unknown token 
     except KeyError:
-      tokenized_text.append(MOST_COMMON_SIZE - 1) # this is the <unknown> token
-    #except KeyError: # word is not in embedding dict
+      embedded_text.append([LARGE_NUM] * vec_size) # the <unknown> embedding
+      tokenized_text.append(MOST_COMMON_SIZE - 1) # the <unknown> token
+
+    # except KeyError: # word is not in embedding dict
     #  word_estimate = add_noise(word_ahead)
     #  tokenized_text.append(word_estimate)
   print("{0}/{1} words successfully embedded".format(existing, total))
   # cache as nested numpy array
-  return np.asarray(tokenized_text), common_dict
+  return np.asarray(tokenized_text), np.asarray(embedded_text), common_dict
 
 def nearest_word(vec2word_dict, token):
   old_dist = float('inf')
